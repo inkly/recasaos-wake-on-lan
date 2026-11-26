@@ -1,0 +1,49 @@
+version: 2
+project_name: casaos-wake-on-lan
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: casaos-wake-on-lan
+    binary: build/sysroot/usr/bin/casaos-wake-on-lan
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -s
+      - -w
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+archives:
+  # the names the module contract asks for: linux-<arch>-casaos-wake-on-lan-v<version>.tar.gz
+  - name_template: >-
+      {{ .Os }}-{{ .Arch }}-{{ .ProjectName }}-v{{ .Version }}
+    id: casaos-wake-on-lan
+    ids:
+      - casaos-wake-on-lan
+    # exactly what a box may unpack: the binary, the unit and the sample under build/sysroot,
+    # and module.json, LICENSE and NOTICE at the root
+    files:
+      - build/**/*
+      - module.json
+      - LICENSE
+      - NOTICE
+checksum:
+  name_template: "checksums.txt"
+snapshot:
+  version_template: "{{ incpatch .Version }}"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+release:
+  draft: false
+  prerelease: auto
+  mode: replace
+  name_template: "v{{ .Version }}"

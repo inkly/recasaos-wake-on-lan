@@ -1,0 +1,15 @@
+casaos-wake-on-lan
+Copyright 2026 inkly
+
+Licensed under the Apache License, Version 2.0 (see LICENSE):
+https://www.apache.org/licenses/LICENSE-2.0
+
+The skeleton of the service (the gateway registration, the token check, the
+config set-up, the release configuration) is adapted from ReCasaOS/ReCasaOS-MCP,
+Apache-2.0, by the ReCasaOS contributors, itself adapted from
+ReCasaOS/CasaOS-VirtManagement and ReCasaOS/CasaOS-AppManagement, Apache-2.0,
+by Vincenzo Lombardo, IceWhale Technology and the ReCasaOS contributors.
+
+Not affiliated with IceWhale. CASAOS is a trademark of
+Shanghai IceWhale Technology Limited, used here only to say what this is a
+module of.
