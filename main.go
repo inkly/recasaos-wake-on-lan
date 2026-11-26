@@ -32,9 +32,6 @@ var (
 	commit = "private build"
 	date   = "private build"
 
-	//go:embed api/index.html
-	_docHTML string
-
 	//go:embed api/wake_on_lan/openapi.yaml
 	_docYAML string
 
@@ -90,7 +87,7 @@ func main() {
 	mux := &util_http.HandlerMultiplexer{
 		HandlerMap: map[string]http.Handler{
 			"v1":  route.InitRouter(route.Deps{Store: store, Wake: service.SystemSender.Wake, Page: web.Page}),
-			"doc": route.InitDocRouter(_docHTML, _docYAML),
+			"doc": route.InitDocRouter(_docYAML),
 		},
 	}
 
@@ -108,24 +105,31 @@ func main() {
 		if err := s.Shutdown(shutdownCtx); err != nil {
 			logger.Error("error when shutting down the http server", zap.Error(err))
 		}
+		if err := os.Remove(urlFilePath); err != nil && !os.IsNotExist(err) {
+			logger.Error("error when removing address file", zap.Error(err), zap.String("filepath", urlFilePath))
+		}
 	}()
 
-	// the gateway is asked to route to us once we answer, and systemd told we are ready once it does
+	// ready once listening: the gateway may come later, and `casaos module install` waits for
+	// the route by itself
+	if supported, err := daemon.SdNotify(false, daemon.SdNotifyReady); err != nil {
+		logger.Error("Failed to notify systemd that Wake-on-LAN service is ready", zap.Error(err))
+	} else if supported {
+		logger.Info("Notified systemd that Wake-on-LAN service is ready")
+	} else {
+		logger.Info("This process is not running as a systemd service.")
+	}
+
 	go func() {
 		err := register(ctx, registerRoutes(address), sleep, func(err error, attempt int) {
-			logger.Error("the routes could not be registered with the gateway, trying again", zap.Int("attempt", attempt), zap.Error(err))
+			log := logger.Warn
+			if attempt <= 3 {
+				log = logger.Error
+			}
+			log("the routes could not be registered with the gateway, trying again", zap.Int("attempt", attempt), zap.Error(err))
 		})
-		if err != nil {
-			return // stopping
-		}
-		logger.Info("Wake-on-LAN service is registered with the gateway", zap.String("address", address))
-
-		if supported, err := daemon.SdNotify(false, daemon.SdNotifyReady); err != nil {
-			logger.Error("Failed to notify systemd that Wake-on-LAN service is ready", zap.Error(err))
-		} else if supported {
-			logger.Info("Notified systemd that Wake-on-LAN service is ready")
-		} else {
-			logger.Info("This process is not running as a systemd service.")
+		if err == nil {
+			logger.Info("Wake-on-LAN service is registered with the gateway", zap.String("address", address))
 		}
 	}()
 

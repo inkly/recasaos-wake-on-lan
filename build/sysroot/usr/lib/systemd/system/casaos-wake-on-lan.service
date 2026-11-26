@@ -7,9 +7,6 @@ Description=Wake-on-LAN module of ReCasaOS
 ExecStartPre=/usr/bin/casaos-wake-on-lan -v
 ExecStart=/usr/bin/casaos-wake-on-lan -c /etc/casaos/wake-on-lan.conf
 Type=notify
-# Ready once the gateway routes to the service. A gateway that is late is waited for by the
-# service itself (it tries again every 10 seconds at most), not by a restart.
-TimeoutStartSec=infinity
 Restart=always
 RestartSec=10
 

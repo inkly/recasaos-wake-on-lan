@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ReCasaOS/CasaOS-Common/external"
 	"github.com/ReCasaOS/CasaOS-Common/utils/jwt"
@@ -25,7 +27,7 @@ import (
 const (
 	// APIPath is the route the module registers with the gateway (gateway_route of module.json).
 	APIPath = "/v1/wake_on_lan"
-	// DocPath is where the description of the API is.
+	// DocPath is the route of the description of the API, served at DocPath/openapi.yaml.
 	DocPath = "/doc" + APIPath
 	// PagePath is the page, which a browser opens without a token.
 	PagePath = APIPath + "/"
@@ -56,6 +58,8 @@ type Deps struct {
 	Wake func(mac string) error
 	// Page is the HTML of the page.
 	Page string
+	// Now is the clock of the limit of one wake a second for a MAC address.
+	Now func() time.Time
 }
 
 type message struct {
@@ -66,29 +70,63 @@ func isInternal(c echo.Context) bool {
 	return external.IsInternalRequest(c.RealIP(), c.Request().Header.Get(echo.HeaderAuthorization), config.CommonInfo.RuntimePath)
 }
 
-// mayEdit says whether the caller may change the list of devices: the box's own services and
-// the administrator. known is false when the account's role cannot be read for now.
-func mayEdit(c echo.Context) (may, known bool) {
-	if isInternal(c) {
-		return true, true
+// mayEditKey is where liveAccount leaves whether the caller may change the list of devices.
+const mayEditKey = "may_edit"
+
+// liveAccount refuses an account that user-service says was removed, on every route behind
+// the token, and answers 503 while the role cannot be read, as the box's other services do.
+// The box's own services pass. It notes whether the caller is the administrator.
+func liveAccount(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if isInternal(c) {
+			c.Set(mayEditKey, true)
+			return next(c)
+		}
+		role, gone, known := account(config.CommonInfo.RuntimePath, c.Request().Header.Get("user_id"))
+		if !known {
+			return c.JSON(http.StatusServiceUnavailable, message{"the account's role cannot be read for now"})
+		}
+		if gone {
+			return c.JSON(http.StatusForbidden, message{"this account was removed"})
+		}
+		c.Set(mayEditKey, role == "admin")
+		return next(c)
 	}
-	role, gone, known := account(config.CommonInfo.RuntimePath, c.Request().Header.Get("user_id"))
-	return known && role == "admin" && !gone, known
+}
+
+func mayEdit(c echo.Context) bool {
+	may, _ := c.Get(mayEditKey).(bool)
+	return may
 }
 
 // adminOnly lets through the box's own services and the administrator: no other account
 // changes the list of devices.
 func adminOnly(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		may, known := mayEdit(c)
-		if !known {
-			return c.JSON(http.StatusServiceUnavailable, message{"the account's role cannot be read for now"})
-		}
-		if !may {
+		if !mayEdit(c) {
 			return c.JSON(http.StatusForbidden, message{"only the administrator changes the list of devices"})
 		}
 		return next(c)
 	}
+}
+
+// wakeLimit lets one wake a second through for each MAC address. It holds only saved MACs,
+// so at most MaxDevices entries and a few more after a save.
+type wakeLimit struct {
+	mu   sync.Mutex
+	now  func() time.Time
+	last map[string]time.Time
+}
+
+func (l *wakeLimit) allow(mac string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.now()
+	if at, ok := l.last[mac]; ok && now.Sub(at) < time.Second {
+		return false
+	}
+	l.last[mac] = now
+	return true
 }
 
 // decode reads one JSON value into v, with no field v does not have and nothing after it.
@@ -145,15 +183,22 @@ func InitRouter(deps Deps) http.Handler {
 		},
 	}))
 
+	e.Use(liveAccount)
+
 	e.Use(echo_middleware.BodyLimit("64K"))
+
+	now := deps.Now
+	if now == nil {
+		now = time.Now
+	}
+	limit := &wakeLimit{now: now, last: map[string]time.Time{}}
 
 	e.GET(APIPath+"/status", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"version": common.Version})
 	})
 
 	e.GET(APIPath+"/devices", func(c echo.Context) error {
-		may, _ := mayEdit(c)
-		return c.JSON(http.StatusOK, map[string]any{"devices": deps.Store.List(), "can_edit": may})
+		return c.JSON(http.StatusOK, map[string]any{"devices": deps.Store.List(), "can_edit": mayEdit(c)})
 	})
 
 	e.PUT(APIPath+"/devices", func(c echo.Context) error {
@@ -188,9 +233,13 @@ func InitRouter(deps Deps) http.Handler {
 		if !deps.Store.Has(mac) {
 			return c.JSON(http.StatusNotFound, message{"no saved device has this MAC address"})
 		}
+		if !limit.allow(mac) {
+			c.Response().Header().Set("Retry-After", "1")
+			return c.JSON(http.StatusTooManyRequests, message{"one wake a second for a device"})
+		}
 		if err := deps.Wake(mac); err != nil {
 			logger.Error("the magic packet could not be sent", zap.String("mac", mac), zap.Error(err))
-			return c.JSON(http.StatusInternalServerError, message{"the magic packet could not be sent: " + err.Error()})
+			return c.JSON(http.StatusInternalServerError, message{"the packet could not be sent"})
 		}
 		return c.JSON(http.StatusOK, message{"sent"})
 	})
@@ -216,17 +265,14 @@ func InitRouter(deps Deps) http.Handler {
 
 // InitDocRouter serves the description of the API, without a token, as the other services of
 // the box do.
-func InitDocRouter(docHTML string, docYAML string) http.Handler {
+func InitDocRouter(docYAML string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case DocPath:
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = io.WriteString(w, docHTML)
-		case DocPath + "/openapi.yaml":
-			w.Header().Set("Content-Type", "application/yaml")
-			_, _ = io.WriteString(w, docYAML)
-		default:
+		if r.URL.Path != DocPath+"/openapi.yaml" {
 			http.NotFound(w, r)
+			return
 		}
+		w.Header().Set("Content-Type", "application/yaml")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = io.WriteString(w, docYAML)
 	})
 }

@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/inkly/casaos-wake-on-lan/route"
+	"github.com/inkly/casaos-wake-on-lan/web"
 )
 
 func TestRegisterRetriesUntilTheGatewayAnswers(t *testing.T) {
@@ -54,5 +56,20 @@ func TestTheDocDescribesTheRoutes(t *testing.T) {
 		if !strings.Contains(_docYAML, want) {
 			t.Errorf("openapi.yaml has no %q", want)
 		}
+	}
+}
+
+// Nothing the service serves loads a script or a style from another site: the page and the
+// description of the API are on the dashboard's origin, where the sign-in token lives.
+func TestNothingServedLoadsFromAnotherSite(t *testing.T) {
+	outside := regexp.MustCompile(`(?is)<script[^>]*\ssrc\s*=|<link[^>]*href\s*=\s*["']?(https?:)?//|@import|url\(\s*["']?(https?:)?//|<(iframe|img|object|embed)[^>]*\ssrc\s*=\s*["']?(https?:)?//`)
+	for name, served := range map[string]string{"web/index.html": web.Page, "api/wake_on_lan/openapi.yaml": _docYAML} {
+		if m := outside.FindString(served); m != "" {
+			t.Errorf("%s loads %q", name, m)
+		}
+	}
+	// the stand-in the test above would have caught
+	if outside.FindString(`<script src="https://cdn.example/x.js"></script>`) == "" {
+		t.Error("the check misses an outside script")
 	}
 }

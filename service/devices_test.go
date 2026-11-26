@@ -1,10 +1,12 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -116,5 +118,36 @@ func TestStoreKeepsTheListWhenAWriteFails(t *testing.T) {
 	}
 	if err := s.Replace([]Device{{Name: "", MAC: "aa:bb:cc:dd:ee:01"}}); err == nil {
 		t.Error("an invalid list was saved")
+	}
+}
+
+// Two saves at once: the file is one of the two lists, whole.
+func TestConcurrentSaves(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "devices.json")
+	s := OpenStore(path, func(string) {})
+	a := []Device{{Name: "a", MAC: "aa:bb:cc:dd:ee:01"}}
+	b := []Device{{Name: "b1", MAC: "aa:bb:cc:dd:ee:02"}, {Name: "b2", MAC: "aa:bb:cc:dd:ee:03"}}
+	for i := 0; i < 50; i++ {
+		var wg sync.WaitGroup
+		for _, list := range [][]Device{a, b} {
+			wg.Add(1)
+			go func() { defer wg.Done(); _ = s.Replace(list) }()
+		}
+		wg.Wait()
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var f file
+		if err := json.Unmarshal(raw, &f); err != nil {
+			t.Fatalf("not valid JSON: %v", err)
+		}
+		got := fmt.Sprint(f.Devices)
+		if got != fmt.Sprint(a) && got != fmt.Sprint(b) {
+			t.Fatalf("the file holds %s, neither list", got)
+		}
+		if mem := fmt.Sprint(s.List()); mem != got {
+			t.Fatalf("memory %s, file %s", mem, got)
+		}
 	}
 }

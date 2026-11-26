@@ -2,6 +2,7 @@ package route
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ReCasaOS/CasaOS-Common/external"
 	"github.com/ReCasaOS/CasaOS-Common/utils/jwt"
@@ -49,12 +51,18 @@ const secret = "s3cret"
 // returns a valid token of account 1, whose role is what the test says.
 func box(t *testing.T, role string, known bool) (token string) {
 	t.Helper()
+	return boxAccount(t, role, false, known)
+}
+
+// boxAccount is box with an account that user-service may say is gone.
+func boxAccount(t *testing.T, role string, gone, known bool) (token string) {
+	t.Helper()
 	logger.LogInitConsoleOnly()
 	runtime := t.TempDir()
 	previous := config.CommonInfo.RuntimePath
 	config.CommonInfo.RuntimePath = runtime
 	previousAccount := account
-	account = func(string, string) (string, bool, bool) { return role, false, known }
+	account = func(string, string) (string, bool, bool) { return role, gone, known }
 	t.Cleanup(func() { config.CommonInfo.RuntimePath = previous; account = previousAccount })
 
 	if err := os.WriteFile(filepath.Join(runtime, external.InternalSecretFilename), []byte(secret), 0o600); err != nil {
@@ -77,15 +85,16 @@ type fixture struct {
 	handler http.Handler
 	store   *service.Store
 	woken   []string
+	now     time.Time
 }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	f := &fixture{store: service.OpenStore(filepath.Join(t.TempDir(), "devices.json"), func(string) {})}
+	f := &fixture{now: time.Unix(1000, 0), store: service.OpenStore(filepath.Join(t.TempDir(), "devices.json"), func(string) {})}
 	if err := f.store.Replace([]service.Device{{Name: "Desk PC", MAC: "aa:bb:cc:dd:ee:01"}}); err != nil {
 		t.Fatal(err)
 	}
-	f.handler = InitRouter(Deps{Store: f.store, Wake: func(mac string) error { f.woken = append(f.woken, mac); return nil }, Page: "<!DOCTYPE html><title>page</title>"})
+	f.handler = InitRouter(Deps{Store: f.store, Wake: func(mac string) error { f.woken = append(f.woken, mac); return nil }, Page: "<!DOCTYPE html><title>page</title>", Now: func() time.Time { return f.now }})
 	return f
 }
 
@@ -274,17 +283,83 @@ func TestThePageNeedsNoToken(t *testing.T) {
 }
 
 func TestDoc(t *testing.T) {
-	h := InitDocRouter("<html>doc</html>", "openapi: 3.0.3")
-	for path, want := range map[string]string{"/doc/v1/wake_on_lan": "doc", "/doc/v1/wake_on_lan/openapi.yaml": "openapi"} {
+	h := InitDocRouter("openapi: 3.0.3")
+	r := httptest.NewRecorder()
+	h.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/doc/v1/wake_on_lan/openapi.yaml", nil))
+	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), "openapi") || r.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("openapi.yaml: %d %v %s", r.Code, r.Header(), r.Body)
+	}
+	for _, path := range []string{"/doc/v1/wake_on_lan", "/doc/v1/wake_on_lan/", "/doc/v1/wake_on_lan/other"} {
 		r := httptest.NewRecorder()
 		h.ServeHTTP(r, httptest.NewRequest(http.MethodGet, path, nil))
-		if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), want) {
-			t.Errorf("%s: %d %s", path, r.Code, r.Body)
+		if r.Code != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", path, r.Code)
 		}
 	}
-	r := httptest.NewRecorder()
-	h.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/doc/v1/wake_on_lan/other", nil))
-	if r.Code != http.StatusNotFound {
-		t.Errorf("other doc path: %d", r.Code)
+}
+
+// A removed account is refused on every route that needs a token, whatever its role; a role
+// that cannot be read is 503 everywhere.
+func TestARemovedAccountIsRefusedEverywhere(t *testing.T) {
+	calls := []struct{ method, path, body string }{
+		{http.MethodGet, "/v1/wake_on_lan/devices", ""},
+		{http.MethodPut, "/v1/wake_on_lan/devices", `{"devices":[]}`},
+		{http.MethodPost, "/v1/wake_on_lan/wake", `{"mac":"aa:bb:cc:dd:ee:01"}`},
+		{http.MethodGet, "/v1/wake_on_lan/status", ""},
+	}
+	for _, c := range []struct {
+		gone, known bool
+		code        int
+	}{{true, true, http.StatusForbidden}, {false, false, http.StatusServiceUnavailable}} {
+		token := boxAccount(t, "admin", c.gone, c.known)
+		f := newFixture(t)
+		for _, call := range calls {
+			if r := f.send(call.method, call.path, token, call.body, lan); r.Code != c.code {
+				t.Errorf("gone %v known %v, %s %s: %d, want %d", c.gone, c.known, call.method, call.path, r.Code, c.code)
+			}
+		}
+		if len(f.woken) != 0 || len(f.store.List()) != 1 {
+			t.Errorf("gone %v known %v: woken %v, devices %v", c.gone, c.known, f.woken, f.store.List())
+		}
+	}
+}
+
+// One wake a second for a MAC: a faster one is 429, and says when to try again.
+func TestWakesAreAtMostOneASecond(t *testing.T) {
+	token := box(t, "user", true)
+	f := newFixture(t)
+	if err := f.store.Replace([]service.Device{{Name: "a", MAC: "aa:bb:cc:dd:ee:01"}, {Name: "b", MAC: "aa:bb:cc:dd:ee:02"}}); err != nil {
+		t.Fatal(err)
+	}
+	wake := func(mac string) *httptest.ResponseRecorder {
+		return f.send(http.MethodPost, "/v1/wake_on_lan/wake", token, `{"mac":"`+mac+`"}`, lan)
+	}
+	if r := wake("aa:bb:cc:dd:ee:01"); r.Code != http.StatusOK {
+		t.Fatalf("first: %d", r.Code)
+	}
+	f.now = f.now.Add(500 * time.Millisecond)
+	if r := wake("AA-BB-CC-DD-EE-01"); r.Code != http.StatusTooManyRequests || r.Header().Get("Retry-After") != "1" {
+		t.Errorf("half a second later: %d, Retry-After %q", r.Code, r.Header().Get("Retry-After"))
+	}
+	if r := wake("aa:bb:cc:dd:ee:02"); r.Code != http.StatusOK {
+		t.Errorf("another MAC: %d", r.Code)
+	}
+	f.now = f.now.Add(time.Second)
+	if r := wake("aa:bb:cc:dd:ee:01"); r.Code != http.StatusOK {
+		t.Errorf("a second later: %d", r.Code)
+	}
+	if len(f.woken) != 3 {
+		t.Errorf("woken %v, want 3", f.woken)
+	}
+}
+
+// A failed send says so without the details of the box's interfaces.
+func TestAFailedWakeSaysLittle(t *testing.T) {
+	token := box(t, "user", true)
+	f := newFixture(t)
+	f.handler = InitRouter(Deps{Store: f.store, Wake: func(string) error { return errors.New("192.168.1.255: eth0 secret detail") }, Now: time.Now})
+	r := f.send(http.MethodPost, "/v1/wake_on_lan/wake", token, `{"mac":"aa:bb:cc:dd:ee:01"}`, lan)
+	if r.Code != http.StatusInternalServerError || strings.Contains(r.Body.String(), "eth0") || !strings.Contains(r.Body.String(), "the packet could not be sent") {
+		t.Errorf("%d %s", r.Code, r.Body)
 	}
 }

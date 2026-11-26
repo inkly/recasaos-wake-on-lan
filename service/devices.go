@@ -165,5 +165,11 @@ func (s *Store) Replace(list []Device) error {
 		return err
 	}
 	s.devices = checked
+	// the rename is on the disk once the folder is: a crash now keeps the new list (best
+	// effort: the file is already the new list, so a failure here changes nothing to say)
+	if dir, err := os.Open(filepath.Dir(s.path)); err == nil {
+		_ = dir.Sync()
+		dir.Close()
+	}
 	return nil
 }

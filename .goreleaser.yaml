@@ -1,16 +1,17 @@
 version: 2
 project_name: casaos-wake-on-lan
-before:
-  hooks:
-    - go mod tidy
 builds:
   - id: casaos-wake-on-lan
     binary: build/sysroot/usr/bin/casaos-wake-on-lan
     env:
       - CGO_ENABLED=0
+    # reproducible: no build path in the binary, the commit's date for the date and the file time
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
       - -X main.commit={{.Commit}}
-      - -X main.date={{.Date}}
+      - -X main.date={{.CommitDate}}
       - -s
       - -w
     goos:
@@ -28,10 +29,20 @@ archives:
     # exactly what a box may unpack: the binary, the unit and the sample under build/sysroot,
     # and module.json, LICENSE and NOTICE at the root
     files:
-      - build/**/*
-      - module.json
-      - LICENSE
-      - NOTICE
+      - src: build/**/*
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: module.json
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: NOTICE
+        info:
+          mtime: "{{ .CommitDate }}"
+    builds_info:
+      mtime: "{{ .CommitDate }}"
 checksum:
   name_template: "checksums.txt"
 snapshot:

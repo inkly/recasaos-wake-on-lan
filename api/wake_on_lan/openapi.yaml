@@ -8,7 +8,8 @@ info:
 
     Every route needs the dashboard's token in the `Authorization` header (bare, or `Bearer <token>`),
     or comes from one of the box's own services. Any signed-in account may list the devices and wake
-    one; only the administrator changes the list.
+    one; only the administrator changes the list. An account that was removed is refused (403) on
+    every route, and every route answers 503 while the account's role cannot be read.
 
     The page of the module is at `/v1/wake_on_lan/`, and needs no token to load: it calls these routes
     with the token the dashboard keeps in the browser.
@@ -35,12 +36,16 @@ paths:
                 $ref: "#/components/schemas/DeviceList"
         "401":
           $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
     put:
       summary: Replace the list of devices (administrator)
       description: |
         At most 64 devices; a name has 1 to 64 printable characters; a MAC address is six bytes in
         hexadecimal separated by `:` or `-`, kept in lower case with `:`; two devices never share a
-        MAC address. The body is 64 KiB at most.
+        MAC address. The body is 64 KiB at most. The list is replaced whole: the last save wins.
       operationId: saveDevices
       requestBody:
         required: true
@@ -81,7 +86,8 @@ paths:
       summary: Send the magic packet of a saved device
       description: |
         The MAC address must be one of the saved devices'. The packet goes to the broadcast address of
-        each IPv4 network of the box, UDP port 9, and nowhere else.
+        each IPv4 network of the box, UDP port 9, and nowhere else. One wake a second for a MAC
+        address: a faster one is 429, with `Retry-After: 1`.
       operationId: wake
       requestBody:
         required: true
@@ -106,11 +112,17 @@ paths:
           $ref: "#/components/responses/Error"
         "401":
           $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
         "413":
           $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/Error"
         "500":
+          $ref: "#/components/responses/Error"
+        "503":
           $ref: "#/components/responses/Error"
 
   /status:
@@ -129,6 +141,10 @@ paths:
                     type: string
                     example: "0.1.0"
         "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "503":
           $ref: "#/components/responses/Error"
 
 components:

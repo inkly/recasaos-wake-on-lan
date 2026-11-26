@@ -52,17 +52,21 @@ removes them.
 ### The API
 
 The page calls four routes under `/v1/wake_on_lan`, each with the dashboard's token in the
-`Authorization` header. They are described at `http://<your box>/doc/v1/wake_on_lan`.
+`Authorization` header. The API is described in `openapi.yaml`, at
+`http://<your box>/doc/v1/wake_on_lan/openapi.yaml` (and in `api/wake_on_lan/` of this repository).
 
 | Route | Who | Does |
 |---|---|---|
 | `GET /devices` | any signed-in account | the list, and `can_edit`: whether the caller may change it |
-| `PUT /devices` | the administrator | replaces the list: `{"devices": [{"name": "...", "mac": "..."}]}` |
+| `PUT /devices` | the administrator | replaces the list, whole: `{"devices": [{"name": "...", "mac": "..."}]}` |
 | `POST /wake` | any signed-in account | `{"mac": "..."}`: sends the packet of a saved computer |
 | `GET /status` | any signed-in account | the module's version |
 
 A list holds 64 computers at most; a name has 1 to 64 printable characters; a MAC address is six
-bytes in hexadecimal separated by `:` or `-`; a body has 64 KiB at most.
+bytes in hexadecimal separated by `:` or `-`; a body has 64 KiB at most. A computer is woken at
+most once a second (a faster call answers 429). A save replaces the whole list: if two
+administrators edit it at once, the last save wins. An account that was removed is refused on
+every route.
 
 ## For an author who starts from this repository
 
@@ -77,11 +81,11 @@ ReCasaOS/CasaOS-Install; read its sections *The manifest*, *What an archive may 
 | File | Why |
 |---|---|
 | `module.json` | The manifest: the module's name, title, description, unit, gateway route, packages, the oldest ReCasaOS it works with and the systems it supports. The box reads it before it downloads anything, and refuses an install on a system it does not list. Every value has a fixed pattern (see the contract). |
-| `main.go` | Starts the service: reads the settings, listens on `127.0.0.1` on a free port, writes that address to `/var/run/casaos/wake-on-lan.url`, registers its routes with the gateway, then tells systemd it is ready. The gateway may not be up yet at boot: the registration is tried again, after 1, 2, 4, 8 and then every 10 seconds, until it works, and the service does not say it is ready before. |
-| `route/` | The routes. Every API route checks the dashboard's token (`echojwt` with the public key of the box's user-service, or a request of one of the box's own services from loopback with the box's internal secret); `PUT /devices` also checks that the account is the administrator. Bodies are limited to 64 KiB. The page itself needs no token: it holds no data. |
+| `main.go` | Starts the service: reads the settings, listens on `127.0.0.1` on a free port, writes that address to `/var/run/casaos/wake-on-lan.url`, tells systemd it is ready, and registers its routes with the gateway. The gateway may not be up yet at boot: the registration is tried again, after 1, 2, 4, 8 and then every 10 seconds, until it works. |
+| `route/` | The routes. Every API route checks the dashboard's token (`echojwt` with the public key of the box's user-service, or a request of one of the box's own services from loopback with the box's internal secret); an account that user-service says was removed is refused; `PUT /devices` also checks that the account is the administrator. Bodies are limited to 64 KiB, and a computer is woken once a second at most. The page itself needs no token: it holds no data. |
 | `service/` | What the module does: the magic packet and the broadcast addresses (`packet.go`), the list of computers and its file (`devices.go`), written whole under another name and renamed, so it is never half written. |
 | `web/index.html` | The page: one HTML file, plain JavaScript, nothing loaded from anywhere else. It reads the token the dashboard keeps in the browser (`localStorage`, `access_token`) and sends it the way the dashboard does, bare in `Authorization`. Every value from the API goes in as text (`textContent`), never as HTML. |
-| `api/` | The description of the API (OpenAPI) and its page, served at `/doc/v1/wake_on_lan`. |
+| `api/` | The description of the API, `openapi.yaml`, served at `/doc/v1/wake_on_lan/openapi.yaml`. |
 | `pkg/config/`, `common/` | The settings file and the version (`common.Version`, printed by `casaos-wake-on-lan -v`). |
 | `build/sysroot/` | What the archive puts on the box, at the same paths: the systemd unit and the sample of the settings. The binary is added there by the build. A box writes nothing else from an archive: a program in `/usr/bin`, the one unit the manifest names, and `*.sample` files in `/etc/casaos`. |
 | `.goreleaser.yaml` | Builds the binary for amd64 and arm64 and the two archives, `linux-<arch>-casaos-wake-on-lan-v<version>.tar.gz`, each with `module.json`, `LICENSE` and `NOTICE` at its root, and `checksums.txt`. |
@@ -98,8 +102,21 @@ Keep the token check of `route/` as it is.
 ```sh
 go vet ./...
 go test -race ./...
-goreleaser release --snapshot --clean   # the two archives and checksums.txt in dist/
 ```
+
+The archives are built with GoReleaser v2.17.0 (it builds with Go 1.26.8; later versions need a
+newer Go): `go install github.com/goreleaser/goreleaser/v2@v2.17.0`. The catalogue matches the
+names of the archives to the tag, so build them from a tag, without publishing anything:
+
+```sh
+git tag v0.1.0                                   # a local tag; do not push it to try a build
+goreleaser release --clean --skip=publish,announce
+# dist/linux-amd64-casaos-wake-on-lan-v0.1.0.tar.gz, dist/linux-arm64-..., dist/checksums.txt
+git tag -d v0.1.0
+```
+
+GoReleaser needs a git remote to read (any URL: nothing is pushed). The build is reproducible:
+`-trimpath`, and the commit's date for the binary's date and every file's time.
 
 The tests need no network: the sending of the packet and the network interfaces are functions
 that the tests replace.
