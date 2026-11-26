@@ -8,7 +8,8 @@ info:
 
     Every route needs the dashboard's token in the `Authorization` header (bare, or `Bearer <token>`),
     or comes from one of the box's own services. Any signed-in account may list the devices and wake
-    one; only the administrator changes the list. An account that was removed is refused (403) on
+    one; only the administrator changes the list. On a ReCasaOS box the gateway gives other accounts
+    no write access, so in practice the administrator does both. An account that was removed is refused (403) on
     every route, and every route answers 503 while the account's role cannot be read.
 
     The page of the module is at `/v1/wake_on_lan/`, and needs no token to load: it calls these routes

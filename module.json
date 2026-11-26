@@ -2,7 +2,7 @@
   "schema": 1,
   "name": "wake-on-lan",
   "title": "Wake-on-LAN",
-  "description": "Wakes a computer of your network with a magic packet, from a card on the home screen of your dashboard and a page at /v1/wake_on_lan/, where the administrator wakes devices and manages the list.",
+  "description": "Wakes a computer of your network with a magic packet, from a card on the home screen of your dashboard and a page at /v1/wake_on_lan/. The module lets any signed-in account wake a saved device and only the administrator change the list; on a ReCasaOS box the gateway gives other accounts no write access, so in practice the administrator does both.",
   "component": "recasaos-wake-on-lan",
   "unit": "casaos-wake-on-lan.service",
   "gateway_route": "/v1/wake_on_lan",

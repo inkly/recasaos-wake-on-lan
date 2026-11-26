@@ -16,10 +16,7 @@ You keep a list of the computers of your network (a name and a MAC address each)
 networks, on UDP port 9, and the computer starts, if Wake-on-LAN is turned on in its firmware and
 in its network settings.
 
-- The administrator wakes a computer, from a card on the home screen of the dashboard or from the
-  page, and adds or removes one. The dashboard shows the card to administrators only.
-- The routes themselves accept any signed-in account for the list and the wake (a script, or the
-  page opened with another account's token); only the changes to the list are the administrator's.
+- The module lets any signed-in account wake a saved device and only the administrator change the list; on a ReCasaOS box the gateway gives other accounts no write access, so in practice the administrator does both. The dashboard shows the card to administrators only.
 - A computer can be woken only once it is in the list: the module never sends a packet for a MAC
   address that is not saved, and never to an address given from outside. The box sends nothing
   but magic packets, to its own networks.
