@@ -201,6 +201,11 @@ func InitRouter(deps Deps) http.Handler {
 		return c.JSON(http.StatusOK, map[string]any{"devices": deps.Store.List(), "can_edit": mayEdit(c)})
 	})
 
+	// the card is the object itself, with no envelope, as the dashboard reads it (like /status)
+	e.GET(APIPath+"/card", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, buildCard(deps.Store.List()))
+	})
+
 	e.PUT(APIPath+"/devices", func(c echo.Context) error {
 		var body devicesBody
 		if err := decode(c, &body); err != nil {

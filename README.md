@@ -16,8 +16,10 @@ You keep a list of the computers of your network (a name and a MAC address each)
 networks, on UDP port 9, and the computer starts, if Wake-on-LAN is turned on in its firmware and
 in its network settings.
 
-- Any account signed in to the dashboard can see the list and wake a computer.
-- Only the administrator adds or removes a computer.
+- The administrator wakes a computer, from a card on the home screen of the dashboard or from the
+  page, and adds or removes one. The dashboard shows the card to administrators only.
+- The routes themselves accept any signed-in account for the list and the wake (a script, or the
+  page opened with another account's token); only the changes to the list are the administrator's.
 - A computer can be woken only once it is in the list: the module never sends a packet for a MAC
   address that is not saved, and never to an address given from outside. The box sends nothing
   but magic packets, to its own networks.
@@ -51,7 +53,7 @@ removes them.
 
 ### The API
 
-The page calls four routes under `/v1/wake_on_lan`, each with the dashboard's token in the
+The page and the card call five routes under `/v1/wake_on_lan`, each with the dashboard's token in the
 `Authorization` header. The API is described in `openapi.yaml`, at
 `http://<your box>/doc/v1/wake_on_lan/openapi.yaml` (and in `api/wake_on_lan/` of this repository).
 
@@ -60,6 +62,7 @@ The page calls four routes under `/v1/wake_on_lan`, each with the dashboard's to
 | `GET /devices` | any signed-in account | the list, and `can_edit`: whether the caller may change it |
 | `PUT /devices` | the administrator | replaces the list, whole: `{"devices": [{"name": "...", "mac": "..."}]}` |
 | `POST /wake` | any signed-in account | `{"mac": "..."}`: sends the packet of a saved computer |
+| `GET /card` | any signed-in account | the card of the home screen (see below) |
 | `GET /status` | any signed-in account | the module's version |
 
 A list holds 64 computers at most; a name has 1 to 64 printable characters; a MAC address is six
@@ -99,6 +102,39 @@ Keep the token check of `route/` as it is. The archives' names need not be the r
 but must be `linux-<arch>-casaos-<stem>-v<version>.tar.gz`: this repository is
 `recasaos-wake-on-lan` and its archives are `…-casaos-wake-on-lan-…`.
 
+### The card
+
+The dashboard draws a card on its home screen from `GET /v1/wake_on_lan/card`, which it reads
+every `refresh` seconds. The module answers with the card itself: a JSON object, with no envelope
+around it. Card format v1 is read strictly: a field it does not know, a wrong type or a bound
+passed (a title and a label of 40 characters, 8 rows, a button label of 24, a body of 1 KiB, a
+`refresh` of 30 to 3600) and the whole card is refused. An action is a `POST` of the module's own
+route, `path` relative to `/v1/wake_on_lan`; the card never names another address.
+
+Here it shows the number of devices, and a row for each, by name: the name, the MAC address and a
+**Wake** button (`POST /wake`). With more than 8 devices it shows 7 and a last row, "…and N more",
+with no button; with none, one row that says to add a device from the page. The link opens the page.
+
+```json
+{
+  "schema": 1,
+  "title": "Wake-on-LAN",
+  "icon": "network-outline",
+  "status": {"level": "info", "text": "2 devices"},
+  "rows": [
+    {"label": "Desk PC", "value": "aa:bb:cc:dd:ee:01",
+     "action": {"label": "Wake", "method": "POST", "path": "/wake", "body": {"mac": "aa:bb:cc:dd:ee:01"}}},
+    {"label": "NAS", "value": "aa:bb:cc:dd:ee:02",
+     "action": {"label": "Wake", "method": "POST", "path": "/wake", "body": {"mac": "aa:bb:cc:dd:ee:02"}}}
+  ],
+  "link": {"label": "Open", "path": "/"},
+  "refresh": 60
+}
+```
+
+The card is built in `route/card.go`, and `route/card_test.go` checks it against the bounds of the
+format for 0, 1, 8 and 20 devices.
+
 ### Build and test
 
 ```sh
@@ -111,10 +147,10 @@ newer Go): `go install github.com/goreleaser/goreleaser/v2@v2.17.0`. The catalog
 names of the archives to the tag, so build them from a tag, without publishing anything:
 
 ```sh
-git tag v0.1.0                                   # a local tag; do not push it to try a build
+git tag v0.2.0                                   # a local tag; do not push it to try a build
 goreleaser release --clean --skip=publish,announce
-# dist/linux-amd64-casaos-wake-on-lan-v0.1.0.tar.gz, dist/linux-arm64-..., dist/checksums.txt
-git tag -d v0.1.0
+# dist/linux-amd64-casaos-wake-on-lan-v0.2.0.tar.gz, dist/linux-arm64-..., dist/checksums.txt
+git tag -d v0.2.0
 ```
 
 GoReleaser needs a git remote to read (any URL: nothing is pushed). The build is reproducible:
@@ -133,12 +169,12 @@ that the tests replace.
 
 A catalogue of ReCasaOS takes an archive of another owner than ReCasaOS only with a GitHub
 provenance attestation bound to the repository, the tag and the commit the tag names. Anyone can
-check it, for each of the two archives, with the commit of the tag (`git rev-parse v0.1.0^{commit}`):
+check it, for each of the two archives, with the commit of the tag (`git rev-parse v0.2.0^{commit}`):
 
 ```sh
-gh attestation verify linux-amd64-casaos-wake-on-lan-v0.1.0.tar.gz \
+gh attestation verify linux-amd64-casaos-wake-on-lan-v0.2.0.tar.gz \
   --repo inkly/recasaos-wake-on-lan --source-digest <commit of the tag> \
-  --source-ref refs/tags/v0.1.0 --deny-self-hosted-runners
+  --source-ref refs/tags/v0.2.0 --deny-self-hosted-runners
 ```
 
 A published version never changes: a fix is a new tag.
@@ -151,13 +187,13 @@ pull request from your fork. A module of another owner has seven lines; `<NAME>`
 name in upper case, with `_` for `-`:
 
 ```sh
-MODULE_WAKE_ON_LAN_TAG=v0.1.0
+MODULE_WAKE_ON_LAN_TAG=v0.2.0
 MODULE_WAKE_ON_LAN_COMMIT=<the 40 hexadecimal digits of the commit the tag names>
 MODULE_WAKE_ON_LAN_COMPONENT=recasaos-wake-on-lan
 MODULE_WAKE_ON_LAN_TIER=community
 MODULE_WAKE_ON_LAN_OWNER=inkly
-MODULE_WAKE_ON_LAN_SHA256_AMD64=<the SHA-256 of linux-amd64-casaos-wake-on-lan-v0.1.0.tar.gz>
-MODULE_WAKE_ON_LAN_SHA256_ARM64=<the SHA-256 of linux-arm64-casaos-wake-on-lan-v0.1.0.tar.gz>
+MODULE_WAKE_ON_LAN_SHA256_AMD64=<the SHA-256 of linux-amd64-casaos-wake-on-lan-v0.2.0.tar.gz>
+MODULE_WAKE_ON_LAN_SHA256_ARM64=<the SHA-256 of linux-arm64-casaos-wake-on-lan-v0.2.0.tar.gz>
 ```
 
 The two SHA-256 are the ones in the `checksums.txt` of your release (`sha256sum` of the archives

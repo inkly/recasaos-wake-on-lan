@@ -127,6 +127,7 @@ func TestEveryRouteNeedsAToken(t *testing.T) {
 		{http.MethodPut, "/v1/wake_on_lan/devices", `{"devices":[]}`},
 		{http.MethodPost, "/v1/wake_on_lan/wake", `{"mac":"aa:bb:cc:dd:ee:01"}`},
 		{http.MethodGet, "/v1/wake_on_lan/status", ""},
+		{http.MethodGet, "/v1/wake_on_lan/card", ""},
 	}
 	for _, c := range calls {
 		for what, authorization := range map[string]string{
@@ -252,7 +253,7 @@ func TestWakeOnlyASavedDevice(t *testing.T) {
 func TestStatus(t *testing.T) {
 	token := box(t, "user", true)
 	r := newFixture(t).send(http.MethodGet, "/v1/wake_on_lan/status", token, "", lan)
-	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `"version":"0.1.0"`) {
+	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `"version":"0.2.0"`) {
 		t.Errorf("%d %s", r.Code, r.Body)
 	}
 }

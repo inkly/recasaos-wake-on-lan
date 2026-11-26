@@ -125,6 +125,24 @@ paths:
         "503":
           $ref: "#/components/responses/Error"
 
+  /card:
+    get:
+      summary: The card the dashboard draws on its home screen (card format v1)
+      operationId: getCard
+      responses:
+        "200":
+          description: The card itself, with no envelope. At most 8 rows, one for each device, by name; with more than 8, the first 7 and a row "…and N more".
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+
   /status:
     get:
       summary: The module's version
@@ -139,7 +157,7 @@ paths:
                 properties:
                   version:
                     type: string
-                    example: "0.1.0"
+                    example: "0.2.0"
         "401":
           $ref: "#/components/responses/Error"
         "403":
