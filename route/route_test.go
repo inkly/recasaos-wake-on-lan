@@ -253,7 +253,7 @@ func TestWakeOnlyASavedDevice(t *testing.T) {
 func TestStatus(t *testing.T) {
 	token := box(t, "user", true)
 	r := newFixture(t).send(http.MethodGet, "/v1/wake_on_lan/status", token, "", lan)
-	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `"version":"0.2.0"`) {
+	if r.Code != http.StatusOK || !strings.Contains(r.Body.String(), `"version":"0.2.1"`) {
 		t.Errorf("%d %s", r.Code, r.Body)
 	}
 }

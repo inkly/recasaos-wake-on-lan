@@ -144,10 +144,10 @@ newer Go): `go install github.com/goreleaser/goreleaser/v2@v2.17.0`. The catalog
 names of the archives to the tag, so build them from a tag, without publishing anything:
 
 ```sh
-git tag v0.2.0                                   # a local tag; do not push it to try a build
+git tag v0.2.1                                   # a local tag; do not push it to try a build
 goreleaser release --clean --skip=publish,announce
-# dist/linux-amd64-casaos-wake-on-lan-v0.2.0.tar.gz, dist/linux-arm64-..., dist/checksums.txt
-git tag -d v0.2.0
+# dist/linux-amd64-casaos-wake-on-lan-v0.2.1.tar.gz, dist/linux-arm64-..., dist/checksums.txt
+git tag -d v0.2.1
 ```
 
 GoReleaser needs a git remote to read (any URL: nothing is pushed). The build is reproducible:
@@ -166,12 +166,12 @@ that the tests replace.
 
 A catalogue of ReCasaOS takes an archive of another owner than ReCasaOS only with a GitHub
 provenance attestation bound to the repository, the tag and the commit the tag names. Anyone can
-check it, for each of the two archives, with the commit of the tag (`git rev-parse v0.2.0^{commit}`):
+check it, for each of the two archives, with the commit of the tag (`git rev-parse v0.2.1^{commit}`):
 
 ```sh
-gh attestation verify linux-amd64-casaos-wake-on-lan-v0.2.0.tar.gz \
+gh attestation verify linux-amd64-casaos-wake-on-lan-v0.2.1.tar.gz \
   --repo inkly/recasaos-wake-on-lan --source-digest <commit of the tag> \
-  --source-ref refs/tags/v0.2.0 --deny-self-hosted-runners
+  --source-ref refs/tags/v0.2.1 --deny-self-hosted-runners
 ```
 
 A published version never changes: a fix is a new tag.
@@ -184,13 +184,13 @@ pull request from your fork. A module of another owner has seven lines; `<NAME>`
 name in upper case, with `_` for `-`:
 
 ```sh
-MODULE_WAKE_ON_LAN_TAG=v0.2.0
+MODULE_WAKE_ON_LAN_TAG=v0.2.1
 MODULE_WAKE_ON_LAN_COMMIT=<the 40 hexadecimal digits of the commit the tag names>
 MODULE_WAKE_ON_LAN_COMPONENT=recasaos-wake-on-lan
 MODULE_WAKE_ON_LAN_TIER=community
 MODULE_WAKE_ON_LAN_OWNER=inkly
-MODULE_WAKE_ON_LAN_SHA256_AMD64=<the SHA-256 of linux-amd64-casaos-wake-on-lan-v0.2.0.tar.gz>
-MODULE_WAKE_ON_LAN_SHA256_ARM64=<the SHA-256 of linux-arm64-casaos-wake-on-lan-v0.2.0.tar.gz>
+MODULE_WAKE_ON_LAN_SHA256_AMD64=<the SHA-256 of linux-amd64-casaos-wake-on-lan-v0.2.1.tar.gz>
+MODULE_WAKE_ON_LAN_SHA256_ARM64=<the SHA-256 of linux-arm64-casaos-wake-on-lan-v0.2.1.tar.gz>
 ```
 
 The two SHA-256 are the ones in the `checksums.txt` of your release (`sha256sum` of the archives
