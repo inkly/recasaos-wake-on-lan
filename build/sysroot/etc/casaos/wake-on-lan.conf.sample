@@ -1,0 +1,9 @@
+[common]
+RuntimePath = /var/run/casaos
+
+[app]
+LogPath = /var/log/casaos/
+LogSaveName = wake-on-lan
+LogFileExt = log
+; the saved devices (devices.json) live here
+StatePath = /var/lib/casaos-wake-on-lan

@@ -1,0 +1,178 @@
+openapi: 3.0.3
+
+info:
+  title: Wake-on-LAN API
+  version: v1
+  description: |
+    Wakes a computer of the box's network with a magic packet.
+
+    Every route needs the dashboard's token in the `Authorization` header (bare, or `Bearer <token>`),
+    or comes from one of the box's own services. Any signed-in account may list the devices and wake
+    one; only the administrator changes the list.
+
+    The page of the module is at `/v1/wake_on_lan/`, and needs no token to load: it calls these routes
+    with the token the dashboard keeps in the browser.
+
+    For issues, please visit the [GitHub repository](https://github.com/inkly/casaos-wake-on-lan).
+
+servers:
+  - url: /v1/wake_on_lan
+
+security:
+  - access_token: []
+
+paths:
+  /devices:
+    get:
+      summary: The saved devices, and whether the caller may change them
+      operationId: listDevices
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceList"
+        "401":
+          $ref: "#/components/responses/Error"
+    put:
+      summary: Replace the list of devices (administrator)
+      description: |
+        At most 64 devices; a name has 1 to 64 printable characters; a MAC address is six bytes in
+        hexadecimal separated by `:` or `-`, kept in lower case with `:`; two devices never share a
+        MAC address. The body is 64 KiB at most.
+      operationId: saveDevices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [devices]
+              properties:
+                devices:
+                  type: array
+                  maxItems: 64
+                  items:
+                    $ref: "#/components/schemas/Device"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceList"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "413":
+          $ref: "#/components/responses/Error"
+        "500":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+
+  /wake:
+    post:
+      summary: Send the magic packet of a saved device
+      description: |
+        The MAC address must be one of the saved devices'. The packet goes to the broadcast address of
+        each IPv4 network of the box, UDP port 9, and nowhere else.
+      operationId: wake
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mac]
+              properties:
+                mac:
+                  type: string
+                  example: "01:23:45:67:89:ab"
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "413":
+          $ref: "#/components/responses/Error"
+        "500":
+          $ref: "#/components/responses/Error"
+
+  /status:
+    get:
+      summary: The module's version
+      operationId: getStatus
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: string
+                    example: "0.1.0"
+        "401":
+          $ref: "#/components/responses/Error"
+
+components:
+  securitySchemes:
+    access_token:
+      type: apiKey
+      in: header
+      name: Authorization
+
+  responses:
+    Error:
+      description: Refused or failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Message"
+
+  schemas:
+    Message:
+      type: object
+      properties:
+        message:
+          type: string
+
+    Device:
+      type: object
+      additionalProperties: false
+      required: [name, mac]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        mac:
+          type: string
+          pattern: "^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$"
+
+    DeviceList:
+      type: object
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+        can_edit:
+          type: boolean
+          description: Whether the caller may change the list (the administrator, or one of the box's services)

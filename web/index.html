@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wake-on-LAN</title>
+<style>
+	:root {
+		color-scheme: light dark;
+		--bg: #f4f5f7; --card: #fff; --text: #1d1f23; --muted: #5f6570; --line: #dfe2e7;
+		--accent: #2563eb; --accent-text: #fff; --bad: #b42318;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root {
+			--bg: #16181c; --card: #22252b; --text: #eceef1; --muted: #a2a8b3; --line: #353943;
+			--accent: #5b8cff; --accent-text: #0b1020; --bad: #ff8a80;
+		}
+	}
+	* { box-sizing: border-box; }
+	body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+	main { max-width: 40rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+	h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+	h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
+	p { margin: 0 0 1rem; color: var(--muted); }
+	section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1rem; margin-top: 1rem; }
+	ul { list-style: none; margin: 0; padding: 0; }
+	li { display: flex; align-items: center; gap: .75rem; padding: .6rem 0; border-top: 1px solid var(--line); }
+	li:first-child { border-top: 0; }
+	.who { flex: 1; min-width: 0; }
+	.name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+	.mac { display: block; color: var(--muted); font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+	button { font: inherit; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); padding: .45rem .9rem; cursor: pointer; }
+	button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+	button:disabled { opacity: .6; cursor: default; }
+	form { display: flex; flex-wrap: wrap; gap: .5rem; }
+	label { display: flex; flex-direction: column; gap: .2rem; flex: 1 1 12rem; font-size: 14px; color: var(--muted); }
+	input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: .45rem .6rem; }
+	form button { align-self: flex-end; }
+	#status { min-height: 1.5rem; margin-top: 1rem; }
+	#status.bad { color: var(--bad); }
+	a { color: var(--accent); }
+	[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+	<h1>Wake-on-LAN</h1>
+	<p>Wake a computer of your network from the box. The computer must have Wake-on-LAN turned on in its firmware and network settings.</p>
+
+	<section id="signin" hidden>
+		<h2>Sign in first</h2>
+		<p>This page uses your sign-in to the dashboard. <a href="/">Open the dashboard</a>, sign in, then come back to this page.</p>
+	</section>
+
+	<section id="devices" hidden>
+		<h2>Devices</h2>
+		<ul id="list"></ul>
+		<p id="empty" hidden>No device yet.</p>
+		<p id="readonly" hidden>Only the administrator adds or removes devices.</p>
+	</section>
+
+	<section id="add" hidden>
+		<h2>Add a device</h2>
+		<form id="form">
+			<label>Name <input id="name" maxlength="64" required autocomplete="off"></label>
+			<label>MAC address <input id="mac" placeholder="01:23:45:67:89:ab" required autocomplete="off" spellcheck="false"></label>
+			<button class="primary" type="submit">Add</button>
+		</form>
+	</section>
+
+	<div id="status" role="status" aria-live="polite"></div>
+</main>
+<script>
+'use strict';
+const API = '/v1/wake_on_lan';
+const MAC = /^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/;
+const $ = id => document.getElementById(id);
+let devices = [];
+let canEdit = false;
+
+class SignedOut extends Error {}
+
+// Every value from the box goes in as text (textContent), never as HTML.
+function say(text, bad) {
+	$('status').textContent = text;
+	$('status').className = bad ? 'bad' : '';
+}
+
+function signedOut() {
+	$('signin').hidden = false;
+	$('devices').hidden = true;
+	$('add').hidden = true;
+	say('');
+}
+
+// The token the dashboard keeps for the signed-in user, sent the way the dashboard sends it.
+async function call(method, path, body) {
+	let token = null;
+	try { token = localStorage.getItem('access_token'); } catch (e) { /* storage off */ }
+	if (!token) throw new SignedOut();
+	const headers = { Authorization: token };
+	if (body !== undefined) headers['Content-Type'] = 'application/json';
+	const response = await fetch(API + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' });
+	if (response.status === 401) throw new SignedOut();
+	let data = null;
+	try { data = await response.json(); } catch (e) { /* no JSON */ }
+	if (!response.ok) {
+		const error = new Error(data && typeof data.message === 'string' ? data.message : 'The box answered ' + response.status + '.');
+		error.status = response.status;
+		throw error;
+	}
+	return data;
+}
+
+function failed(error) {
+	if (error instanceof SignedOut) return signedOut();
+	say(error.message, true);
+}
+
+function render() {
+	const list = $('list');
+	list.replaceChildren();
+	for (const device of devices) {
+		const item = document.createElement('li');
+		const who = document.createElement('div');
+		who.className = 'who';
+		const name = document.createElement('span');
+		name.className = 'name';
+		name.textContent = device.name;
+		const mac = document.createElement('span');
+		mac.className = 'mac';
+		mac.textContent = device.mac;
+		who.append(name, mac);
+		item.append(who);
+
+		const wake = document.createElement('button');
+		wake.className = 'primary';
+		wake.type = 'button';
+		wake.textContent = 'Wake';
+		wake.addEventListener('click', () => wakeUp(device, wake));
+		item.append(wake);
+
+		if (canEdit) {
+			const remove = document.createElement('button');
+			remove.type = 'button';
+			remove.textContent = 'Remove';
+			remove.setAttribute('aria-label', 'Remove ' + device.name);
+			remove.addEventListener('click', () => save(devices.filter(d => d.mac !== device.mac), 'Removed.'));
+			item.append(remove);
+		}
+		list.append(item);
+	}
+	$('empty').hidden = devices.length > 0;
+	$('readonly').hidden = canEdit;
+	$('add').hidden = !canEdit;
+	$('devices').hidden = false;
+	$('signin').hidden = true;
+}
+
+async function load() {
+	try {
+		const data = await call('GET', '/devices');
+		devices = Array.isArray(data.devices) ? data.devices : [];
+		canEdit = data.can_edit === true;
+		render();
+	} catch (error) {
+		failed(error);
+	}
+}
+
+async function wakeUp(device, button) {
+	button.disabled = true;
+	say('Sending…');
+	try {
+		await call('POST', '/wake', { mac: device.mac });
+		say('Magic packet sent to ' + device.name + '. It can take a minute to start.');
+	} catch (error) {
+		failed(error);
+	} finally {
+		button.disabled = false;
+	}
+}
+
+async function save(list, done) {
+	try {
+		const data = await call('PUT', '/devices', { devices: list });
+		devices = data.devices;
+		render();
+		say(done);
+		return true;
+	} catch (error) {
+		if (error.status === 403) {
+			canEdit = false;
+			render();
+		}
+		failed(error);
+		return false;
+	}
+}
+
+$('form').addEventListener('submit', async event => {
+	event.preventDefault();
+	const name = $('name').value.trim();
+	const mac = $('mac').value.trim();
+	if (!name) return say('Give the device a name.', true);
+	if (!MAC.test(mac)) return say('A MAC address is six bytes in hexadecimal, such as 01:23:45:67:89:ab.', true);
+	if (await save(devices.concat([{ name, mac }]), 'Added.')) {
+		$('form').reset();
+	}
+});
+
+load();
+</script>
+</body>
+</html>
