@@ -123,13 +123,15 @@ that the tests replace.
 
 ### Publish a version
 
-1. Set the version in `common/constants.go` (it is what `-v` prints).
+1. Set the version in `common/constants.go` (it is what `-v` prints) and commit it.
 2. Tag the commit `v<major>.<minor>.<patch>` (no leading zero) and push the tag.
-3. The release workflow builds the archives with GoReleaser on a runner hosted by GitHub, publishes
-   them with `checksums.txt` in the release of the tag, and attests their provenance.
+3. `.github/workflows/release.yml` runs on the tag, on a runner hosted by GitHub: it runs the
+   tests, builds with GoReleaser v2.17.0, publishes the release of the tag with the two archives
+   and `checksums.txt`, and attests the provenance of both archives (`actions/attest`).
 
 A catalogue of ReCasaOS takes an archive of another owner than ReCasaOS only with a GitHub
-provenance attestation bound to the repository, the tag and its commit. Anyone can check it:
+provenance attestation bound to the repository, the tag and the commit the tag names. Anyone can
+check it, for each of the two archives, with the commit of the tag (`git rev-parse v0.1.0^{commit}`):
 
 ```sh
 gh attestation verify linux-amd64-casaos-wake-on-lan-v0.1.0.tar.gz \

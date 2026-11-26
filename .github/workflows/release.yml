@@ -1,0 +1,43 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+# contents: the release and its files; id-token and attestations: the provenance attestation
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    # a runner hosted by GitHub: the attestation says so, and a catalogue of ReCasaOS requires it
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Unit tests
+        run: go test ./...
+
+      # v2.17.0 builds with the Go of go.mod (1.26.8); later versions need a newer Go
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: v2.17.0
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # SLSA build provenance of the two archives, bound to this repository, the tag and its commit
+      - uses: actions/attest@v4
+        with:
+          subject-path: dist/linux-*-casaos-wake-on-lan-*.tar.gz
