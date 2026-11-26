@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inkly/casaos-wake-on-lan/route"
-	"github.com/inkly/casaos-wake-on-lan/web"
+	"github.com/inkly/recasaos-wake-on-lan/route"
+	"github.com/inkly/recasaos-wake-on-lan/web"
 )
 
 func TestRegisterRetriesUntilTheGatewayAnswers(t *testing.T) {

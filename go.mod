@@ -1,4 +1,4 @@
-module github.com/inkly/casaos-wake-on-lan
+module github.com/inkly/recasaos-wake-on-lan
 
 go 1.26.8
 

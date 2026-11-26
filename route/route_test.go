@@ -16,8 +16,8 @@ import (
 	"github.com/ReCasaOS/CasaOS-Common/external"
 	"github.com/ReCasaOS/CasaOS-Common/utils/jwt"
 	"github.com/ReCasaOS/CasaOS-Common/utils/logger"
-	"github.com/inkly/casaos-wake-on-lan/pkg/config"
-	"github.com/inkly/casaos-wake-on-lan/service"
+	"github.com/inkly/recasaos-wake-on-lan/pkg/config"
+	"github.com/inkly/recasaos-wake-on-lan/service"
 )
 
 // The common library keeps user-service's public key for ten seconds whatever the runtime

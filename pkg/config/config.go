@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/ReCasaOS/CasaOS-Common/utils/constants"
-	"github.com/inkly/casaos-wake-on-lan/common"
+	"github.com/inkly/recasaos-wake-on-lan/common"
 	"gopkg.in/ini.v1"
 )
 

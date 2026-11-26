@@ -3,7 +3,7 @@
   "name": "wake-on-lan",
   "title": "Wake-on-LAN",
   "description": "Wakes a computer of your network with a magic packet, from a page at /v1/wake_on_lan/ on your dashboard's address, where any signed-in account can wake a device and only the administrator adds or removes one.",
-  "component": "casaos-wake-on-lan",
+  "component": "recasaos-wake-on-lan",
   "unit": "casaos-wake-on-lan.service",
   "gateway_route": "/v1/wake_on_lan",
   "packages": {

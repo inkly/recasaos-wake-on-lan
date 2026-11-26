@@ -14,7 +14,7 @@ info:
     The page of the module is at `/v1/wake_on_lan/`, and needs no token to load: it calls these routes
     with the token the dashboard keeps in the browser.
 
-    For issues, please visit the [GitHub repository](https://github.com/inkly/casaos-wake-on-lan).
+    For issues, please visit the [GitHub repository](https://github.com/inkly/recasaos-wake-on-lan).
 
 servers:
   - url: /v1/wake_on_lan

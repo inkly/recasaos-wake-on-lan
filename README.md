@@ -1,4 +1,4 @@
-# casaos-wake-on-lan
+# recasaos-wake-on-lan
 
 An optional module of [ReCasaOS](https://github.com/ReCasaOS) that wakes a computer of your
 network from the box, with a Wake-on-LAN magic packet.
@@ -95,7 +95,9 @@ ReCasaOS/CasaOS-Install; read its sections *The manifest*, *What an archive may 
 To make a module of your own: rename the module (`name`, `component` = your repository's name,
 `unit`, `gateway_route`, the files under `build/sysroot/`, `project_name`, the paths in `main.go`
 and `pkg/config`), and replace `service/`, `route/`, `web/` and `api/` with what your module does.
-Keep the token check of `route/` as it is.
+Keep the token check of `route/` as it is. The archives' names need not be the repository's,
+but must be `linux-<arch>-casaos-<stem>-v<version>.tar.gz`: this repository is
+`recasaos-wake-on-lan` and its archives are `…-casaos-wake-on-lan-…`.
 
 ### Build and test
 
@@ -135,7 +137,7 @@ check it, for each of the two archives, with the commit of the tag (`git rev-par
 
 ```sh
 gh attestation verify linux-amd64-casaos-wake-on-lan-v0.1.0.tar.gz \
-  --repo inkly/casaos-wake-on-lan --source-digest <commit of the tag> \
+  --repo inkly/recasaos-wake-on-lan --source-digest <commit of the tag> \
   --source-ref refs/tags/v0.1.0 --deny-self-hosted-runners
 ```
 
@@ -151,7 +153,7 @@ name in upper case, with `_` for `-`:
 ```sh
 MODULE_WAKE_ON_LAN_TAG=v0.1.0
 MODULE_WAKE_ON_LAN_COMMIT=<the 40 hexadecimal digits of the commit the tag names>
-MODULE_WAKE_ON_LAN_COMPONENT=casaos-wake-on-lan
+MODULE_WAKE_ON_LAN_COMPONENT=recasaos-wake-on-lan
 MODULE_WAKE_ON_LAN_TIER=community
 MODULE_WAKE_ON_LAN_OWNER=inkly
 MODULE_WAKE_ON_LAN_SHA256_AMD64=<the SHA-256 of linux-amd64-casaos-wake-on-lan-v0.1.0.tar.gz>
